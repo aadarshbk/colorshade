@@ -1,60 +1,78 @@
-const express = require("express");
-const path = require("path");
-const cors = require("cors");
-const app = express();
-const port = process.env.PORT || 3001; // Use Replit's port or default to 3001
+const readline = require('readline');
 
-// Middleware to parse JSON bodies
-app.use(express.json());
-app.use(cors());
-
-// API route to calculate ratio from hex color
-app.post("/calculate-ratio", (req, res) => {
-    try {
-        const { hexColor, minVal, maxVal } = req.body;
-
-        if (!hexColor || minVal === undefined || maxVal === undefined) {
-            return res.status(400).json({
-                error: "Missing required parameters: hexColor, minVal, and maxVal are required.",
-            });
-        }
-
-        // Validate the hex color
-        if (!/^#?[0-9A-Fa-f]{6}$/.test(hexColor)) {
-            return res.status(400).json({
-                error: "Invalid hex color. Please provide a valid 6-character hex color code.",
-            });
-        }
-
-        // Validate minVal and maxVal
-        if (isNaN(minVal) || isNaN(maxVal) || minVal < 0 || maxVal > 255) {
-            return res.status(400).json({
-                error: "minVal and maxVal should be numbers between 0 and 255.",
-            });
-        }
-
-        const ratio = calculateRatioFromHex(hexColor, minVal, maxVal);
-        res.json({ originalColor: hexColor, ratio });
-    } catch (error) {
-        res.status(400).json({ error: error.message });
-    }
-});
-
-
-// Function to calculate ratio from hex color
-function calculateRatioFromHex(hexColor, minVal, maxVal) {
-    hexColor = hexColor.replace("#", "");
-    const r = parseInt(hexColor.slice(0, 2), 16);
-    const g = parseInt(hexColor.slice(2, 4), 16);
-    const b = parseInt(hexColor.slice(4, 6), 16);
-
-    // Calculate the ratio using all RGB components
-    const avgColor = (r + g + b) / 3;
-    const ratio = ((avgColor - minVal) / (maxVal - minVal)) * 100;
-
-    return ratio;
+// Function to adjust the color
+function adjustColor(hexColor, maxNumber, reqNumber) {
+    const hexToRgb = (hex) => {
+        const bigint = parseInt(hex.slice(1), 16);
+        const r = (bigint >> 16) & 255;
+        const g = (bigint >> 8) & 255;
+        const b = bigint & 255;
+        return [r, g, b];
+    };
+    const rgbToHex = (r, g, b) => {
+        return "#" + [r, g, b].map(x => {
+            const hex = x.toString(16);
+            return hex.length === 1 ? '0' + hex : hex;
+        }).join('');
+    };
+    const adjustBrightness = (rgb, ratio) => {
+        return rgb.map(color => Math.min(255, Math.round(color + (255 - color) * ratio)));
+    };
+    const rgb = hexToRgb(hexColor);
+    const ratio = 1 - (reqNumber / maxNumber); // Invert the ratio for lightening
+    const adjustedRgb = adjustBrightness(rgb, ratio);
+    return rgbToHex(...adjustedRgb);
 }
 
-app.listen(port, () => {
-    console.log(`Server listening on port ${port}`);
+// Set up readline interface for user input
+const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout
 });
+
+// Validate if the input is a valid HEX color
+function isValidHex(hex) {
+    return /^#[0-9A-F]{6}$/i.test(hex);
+}
+
+// Validate if the input is an integer
+function isValidInteger(input) {
+    return /^\d+$/.test(input);
+}
+
+// Synchronously capture user input
+function askQuestion(query) {
+    return new Promise((resolve) => {
+        rl.question(query, (answer) => {
+            resolve(answer);
+        });
+    });
+}
+
+async function main() {
+    try {
+        const hexColor = await askQuestion('Enter HEX color value (e.g., #FF5733): ');
+        if (!isValidHex(hexColor)) {
+            throw new Error('This is not a valid HEX color.');
+        }
+
+        const maxNumber = await askQuestion('Enter max number: ');
+        if (!isValidInteger(maxNumber)) {
+            throw new Error('Input number should be an integer.');
+        }
+
+        const reqNumber = await askQuestion('Enter required number: ');
+        if (!isValidInteger(reqNumber)) {
+            throw new Error('Input number should be an integer.');
+        }
+
+        const adjustedColor = adjustColor(hexColor, parseInt(maxNumber), parseInt(reqNumber));
+        console.log(`The adjusted HEX color is: ${adjustedColor}`);
+    } catch (error) {
+        console.error(`Error: ${error.message}`);
+    } finally {
+        rl.close();
+    }
+}
+
+main();
